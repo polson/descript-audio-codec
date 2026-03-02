@@ -174,3 +174,8 @@ archived/
 encoded_out/
 recon/
 recons/
+
+# Node.js
+node_modules/
+package-lock.json
+package.json
