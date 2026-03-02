@@ -1,6 +1,7 @@
 """
 Tests for CLI.
 """
+
 import subprocess
 from pathlib import Path
 
@@ -74,11 +75,11 @@ def test_compression():
     artifacts = np.load(dac_file, allow_pickle=True)[()]
     codes = artifacts["codes"]
 
-    # Ensure that the number of quantizers is correct
-    assert codes.shape[1] == 3
+    # FSQ keeps a fixed code width; legacy n_quantizers is ignored.
+    assert codes.shape[1] == 30
 
-    # Ensure that dtype of compression is uint16
-    assert codes.dtype == np.uint16
+    # FSQ codes are stored as uint8 on disk.
+    assert codes.dtype == np.uint8
 
 
 # CUDA_VISIBLE_DEVICES=0 python -m pytest tests/test_cli.py -s
