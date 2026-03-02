@@ -237,8 +237,6 @@ def train_loop(state, batch, accel, lambdas):
     with accel.autocast():
         out = state.generator(signal.audio_data, signal.sample_rate)
         recons = AudioSignal(out["audio"], signal.sample_rate)
-        commitment_loss = out.get("vq/commitment_loss")
-        codebook_loss = out.get("vq/codebook_loss")
 
     with accel.autocast():
         output["adv/disc_loss"] = state.gan_loss.discriminator_loss(recons, signal)
@@ -260,10 +258,6 @@ def train_loop(state, batch, accel, lambdas):
             output["adv/gen_loss"],
             output["adv/feat_loss"],
         ) = state.gan_loss.generator_loss(recons, signal)
-        if commitment_loss is not None:
-            output["vq/commitment_loss"] = commitment_loss
-        if codebook_loss is not None:
-            output["vq/codebook_loss"] = codebook_loss
         output["loss"] = sum([v * output[k] for k, v in lambdas.items() if k in output])
 
     state.optimizer_g.zero_grad()
@@ -367,8 +361,6 @@ def train(
         "mel/loss": 100.0,
         "adv/feat_loss": 2.0,
         "adv/gen_loss": 1.0,
-        "vq/commitment_loss": 0.25,  # Automatically ignored for FSQ
-        "vq/codebook_loss": 1.0,  # Automatically ignored for FSQ
     },
 ):
     util.seed(seed)

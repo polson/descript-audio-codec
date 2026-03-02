@@ -27,8 +27,8 @@ def main(
         codes = []
         for x in tqdm.tqdm(signals):
             x = x.to(model.device)
-            o = model.encode(x.audio_data, x.sample_rate)
-            codes.append(o["codes"].cpu())
+            _, c = model.encode(x.audio_data)
+            codes.append(c.cpu())
 
         codes = torch.cat(codes, dim=-1)
         entropy = []

@@ -296,48 +296,38 @@ class FiniteScalarQuantize(nn.Module):
             Quantized latents
         codes: Tensor[B x D x T]
             Discrete codes (quantized values strictly in range [0, levels-1])
-        latents: Tensor[B x D x T]
-            The continuous projected latents (returned for interface compatibility)
-        commitment_loss: Tensor[1]
-            Always 0.0 (FSQ doesn't require this)
-        codebook_loss: Tensor[1]
-            Always 0.0 (FSQ doesn't require this)
         """
         # Project to FSQ dimensions
         z_proj = self.in_proj(z)  # [B, D, T]
 
         # Reshape levels for broadcasting: [1, D, 1]
-        levels_tensor = self.levels.view(1, -1, 1)
+        levels_float = self.levels.to(device=z.device, dtype=z_proj.dtype).view(
+            1, -1, 1
+        )
+        levels_int = self.levels.to(device=z.device).view(1, -1, 1)
 
-        # 1. Bounding trick using tanh
-        # We compute the bound threshold. E.g., for 8 levels, bound is 3.5.
-        bound = (levels_tensor - 1) / 2.0
+        # 1. Bound projected latents to quantization support.
+        # Keep identity gradient through tanh bound (STE-style) to avoid saturation.
+        half_width = (levels_float - 1.0) / 2.0
+        z_centered = z_proj - half_width
+        z_bounded = half_width * torch.tanh(z_centered / half_width)
+        z_bounded = z_centered + (z_bounded - z_centered).detach()
 
-        # Bound continuous latents strictly to (-bound, bound)
-        # We INTENTIONALLY keep the gradient of tanh here to prevent latents from blowing up.
-        z_bounded = bound * torch.tanh(z_proj / bound)
+        # 2. Shift to [0, levels - 1]
+        z_scaled = z_bounded + half_width
 
-        # 2. Shift to positive range [0, levels - 1]
-        z_scaled = z_bounded + bound
+        # 3. Quantize to integer codes in [0, levels-1]
+        codes = torch.round(z_scaled).clamp(0, levels_int - 1).to(torch.int64)
 
-        # 3. Quantize to integer codes strictly in [0, levels-1]
-        codes = torch.round(z_scaled)
+        # 4. Straight-through estimator over quantization and normalize to [-1, 1]
+        z_q = (codes.to(z_proj.dtype) / (levels_float - 1.0)) * 2.0 - 1.0
+        z_proj_norm = (z_scaled / (levels_float - 1.0)) * 2.0 - 1.0
+        z_q = z_proj_norm + (z_q - z_proj_norm).detach()
 
-        # 4. Straight-Through Estimator (STE) for rounding
-        # This allows gradients to flow through the non-differentiable round() operation
-        z_q = z_scaled + (codes - z_scaled).detach()
+        # 5. Project back to input dimension
+        z_out = self.out_proj(z_q)
 
-        # 5. Scale codes back to [-1, 1] for symmetric out_proj weights
-        z_q_norm = (z_q / bound) - 1.0
-
-        # 6. Project back to input dimension
-        z_out = self.out_proj(z_q_norm)
-
-        # Construct dummy losses to maintain perfect interface compatibility with RVQ
-        commitment_loss = torch.tensor(0.0, device=z.device)
-        codebook_loss = torch.tensor(0.0, device=z.device)
-
-        return z_out, codes, z_proj, commitment_loss, codebook_loss
+        return z_out, codes
 
     def from_codes(self, codes: torch.Tensor):
         """
@@ -352,26 +342,22 @@ class FiniteScalarQuantize(nn.Module):
         -------
         z_out: Tensor[B x input_dim x T]
             Quantized continuous representation
-        z_p: None
-            Maintained for interface compatibility with RVQ.
-        codes: Tensor[B x D x T]
-            The original codes.
         """
-        levels_tensor = self.levels.view(1, -1, 1)
-        bound = (levels_tensor - 1) / 2.0
+        levels_tensor = self.levels.to(device=codes.device, dtype=torch.float32).view(
+            1, -1, 1
+        )
 
         # Normalize integer codes from [0, levels-1] to [-1, 1]
-        z_q_norm = (codes / bound) - 1.0
+        z_q_norm = (codes.to(levels_tensor.dtype) / (levels_tensor - 1.0)) * 2.0 - 1.0
 
         # Project back to input dimension
         z_out = self.out_proj(z_q_norm)
 
-        # Return a 3-tuple to ensure `z = self.quantizer.from_codes(c)[0]` works perfectly in base.py
-        return z_out, None, codes
+        return z_out
 
 
 if __name__ == "__main__":
     rvq = ResidualVectorQuantize(quantizer_dropout=True)
     x = torch.randn(16, 512, 80)
     y = rvq(x)
-    print(y["latents"].shape)
+    print(y[2].shape)

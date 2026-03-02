@@ -151,6 +151,10 @@ class DAC(BaseModel, CodecMixin):
         latent_dim: int = None,
         decoder_dim: int = 1536,
         decoder_rates: List[int] = [8, 8, 4, 2],
+        n_codebooks: int = 9,
+        codebook_size: int = 1024,
+        codebook_dim: int = 8,
+        quantizer_dropout: float = 0.0,
         fsq_levels: list = [8] * 30,
         sample_rate: int = 44100,
     ):
@@ -161,6 +165,10 @@ class DAC(BaseModel, CodecMixin):
         self.decoder_dim = decoder_dim
         self.decoder_rates = decoder_rates
         self.sample_rate = sample_rate
+        self.n_codebooks = n_codebooks
+        self.codebook_size = codebook_size
+        self.codebook_dim = codebook_dim
+        self.quantizer_dropout = quantizer_dropout
 
         if latent_dim is None:
             latent_dim = encoder_dim * (2 ** len(encoder_rates))
@@ -213,11 +221,10 @@ class DAC(BaseModel, CodecMixin):
 
         Returns
         -------
-        dict
-            A dictionary with the following keys:
-            "z" : Tensor[B x D x T]
+        Tuple[Tensor, Tensor]
+            z : Tensor[B x D x T]
                 Quantized continuous representation of input
-            "codes" : Tensor[B x N x T]
+            codes : Tensor[B x N x T]
                 Integer FSQ codes
         """
         z = self.encoder(audio_data)
@@ -236,10 +243,8 @@ class DAC(BaseModel, CodecMixin):
 
         Returns
         -------
-        dict
-            A dictionary with the following keys:
-            "audio" : Tensor[B x 1 x length]
-                Decoded audio data.
+        Tensor[B x 1 x length]
+            Decoded audio data.
         """
         return self.decoder(z)
 

@@ -26,8 +26,21 @@ class DACFile:
     dac_version: str
 
     def save(self, path):
+        codes_np = self.codes.numpy()
+        if np.issubdtype(codes_np.dtype, np.integer):
+            max_code = int(codes_np.max()) if codes_np.size else 0
+            min_code = int(codes_np.min()) if codes_np.size else 0
+            if min_code >= 0 and max_code <= np.iinfo(np.uint8).max:
+                codes_dtype = np.uint8
+            elif min_code >= 0 and max_code <= np.iinfo(np.uint16).max:
+                codes_dtype = np.uint16
+            else:
+                codes_dtype = np.int32
+        else:
+            codes_dtype = np.int32
+
         artifacts = {
-            "codes": self.codes.numpy().astype(np.uint16),
+            "codes": codes_np.astype(codes_dtype),
             "metadata": {
                 "input_db": self.input_db.numpy().astype(np.float32),
                 "original_length": self.original_length,
