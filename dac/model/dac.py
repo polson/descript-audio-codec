@@ -1,6 +1,5 @@
 import math
 from typing import List
-from typing import Union
 
 import numpy as np
 import torch
@@ -12,7 +11,7 @@ from .base import CodecMixin
 from dac.nn.layers import Snake1d
 from dac.nn.layers import WNConv1d
 from dac.nn.layers import WNConvTranspose1d
-from dac.nn.quantize import ResidualVectorQuantize
+from dac.nn.quantize import FiniteScalarQuantize
 
 
 def init_weights(m):
@@ -152,10 +151,7 @@ class DAC(BaseModel, CodecMixin):
         latent_dim: int = None,
         decoder_dim: int = 1536,
         decoder_rates: List[int] = [8, 8, 4, 2],
-        n_codebooks: int = 9,
-        codebook_size: int = 1024,
-        codebook_dim: Union[int, list] = 8,
-        quantizer_dropout: bool = False,
+        fsq_levels: list = [8] * 30,
         sample_rate: int = 44100,
     ):
         super().__init__()
@@ -174,15 +170,10 @@ class DAC(BaseModel, CodecMixin):
         self.hop_length = np.prod(encoder_rates)
         self.encoder = Encoder(encoder_dim, encoder_rates, latent_dim)
 
-        self.n_codebooks = n_codebooks
-        self.codebook_size = codebook_size
-        self.codebook_dim = codebook_dim
-        self.quantizer = ResidualVectorQuantize(
+        self.fsq_levels = fsq_levels
+        self.quantizer = FiniteScalarQuantize(
             input_dim=latent_dim,
-            n_codebooks=n_codebooks,
-            codebook_size=codebook_size,
-            codebook_dim=codebook_dim,
-            quantizer_dropout=quantizer_dropout,
+            levels=fsq_levels,
         )
 
         self.decoder = Decoder(
@@ -218,8 +209,7 @@ class DAC(BaseModel, CodecMixin):
         audio_data : Tensor[B x 1 x T]
             Audio data to encode
         n_quantizers : int, optional
-            Number of quantizers to use, by default None
-            If None, all quantizers are used.
+            Ignored under FSQ, kept for compatibility.
 
         Returns
         -------
@@ -228,23 +218,11 @@ class DAC(BaseModel, CodecMixin):
             "z" : Tensor[B x D x T]
                 Quantized continuous representation of input
             "codes" : Tensor[B x N x T]
-                Codebook indices for each codebook
-                (quantized discrete representation of input)
-            "latents" : Tensor[B x N*D x T]
-                Projected latents (continuous representation of input before quantization)
-            "vq/commitment_loss" : Tensor[1]
-                Commitment loss to train encoder to predict vectors closer to codebook
-                entries
-            "vq/codebook_loss" : Tensor[1]
-                Codebook loss to update the codebook
-            "length" : int
-                Number of samples in input audio
+                Integer FSQ codes
         """
         z = self.encoder(audio_data)
-        z, codes, latents, commitment_loss, codebook_loss = self.quantizer(
-            z, n_quantizers
-        )
-        return z, codes, latents, commitment_loss, codebook_loss
+        z, codes = self.quantizer(z)
+        return z, codes
 
     def decode(self, z: torch.Tensor):
         """Decode given latent codes and return audio data
@@ -281,8 +259,7 @@ class DAC(BaseModel, CodecMixin):
             Sample rate of audio data in Hz, by default None
             If None, defaults to `self.sample_rate`
         n_quantizers : int, optional
-            Number of quantizers to use, by default None.
-            If None, all quantizers are used.
+            Ignored under FSQ, kept for compatibility.
 
         Returns
         -------
@@ -291,34 +268,19 @@ class DAC(BaseModel, CodecMixin):
             "z" : Tensor[B x D x T]
                 Quantized continuous representation of input
             "codes" : Tensor[B x N x T]
-                Codebook indices for each codebook
-                (quantized discrete representation of input)
-            "latents" : Tensor[B x N*D x T]
-                Projected latents (continuous representation of input before quantization)
-            "vq/commitment_loss" : Tensor[1]
-                Commitment loss to train encoder to predict vectors closer to codebook
-                entries
-            "vq/codebook_loss" : Tensor[1]
-                Codebook loss to update the codebook
-            "length" : int
-                Number of samples in input audio
+                Integer FSQ codes
             "audio" : Tensor[B x 1 x length]
                 Decoded audio data.
         """
         length = audio_data.shape[-1]
         audio_data = self.preprocess(audio_data, sample_rate)
-        z, codes, latents, commitment_loss, codebook_loss = self.encode(
-            audio_data, n_quantizers
-        )
+        z, codes = self.encode(audio_data, n_quantizers)
 
         x = self.decode(z)
         return {
             "audio": x[..., :length],
             "z": z,
             "codes": codes,
-            "latents": latents,
-            "vq/commitment_loss": commitment_loss,
-            "vq/codebook_loss": codebook_loss,
         }
 
 
@@ -331,7 +293,7 @@ if __name__ == "__main__":
     for n, m in model.named_modules():
         o = m.extra_repr()
         p = sum([np.prod(p.size()) for p in m.parameters()])
-        fn = lambda o, p: o + f" {p/1e6:<.3f}M params."
+        fn = lambda o, p: o + f" {p / 1e6:<.3f}M params."
         setattr(m, "extra_repr", partial(fn, o=o, p=p))
     print(model)
     print("Total # of params: ", sum([np.prod(p.size()) for p in model.parameters()]))
