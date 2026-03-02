@@ -1,9 +1,8 @@
-import math
 import warnings
 from pathlib import Path
+from typing import Optional
 
 import argbind
-import numpy as np
 import torch
 from audiotools import AudioSignal
 from audiotools.core import util
@@ -23,7 +22,7 @@ def encode(
     weights_path: str = "",
     model_tag: str = "latest",
     model_bitrate: str = "8kbps",
-    n_quantizers: int = None,
+    n_quantizers: Optional[int] = None,
     device: str = "cuda",
     model_type: str = "44khz",
     win_duration: float = 5.0,
@@ -45,7 +44,7 @@ def encode(
     model_bitrate: str
         Bitrate of the model. Must be one of "8kbps", or "16kbps". Defaults to "8kbps".
     n_quantizers : int, optional
-        Number of quantizers to use, by default None. If not specified, all the quantizers will be used and the model will compress at maximum bitrate.
+        Kept for backward compatibility. Ignored by FSQ models.
     device : str, optional
         Device to use, by default "cuda"
     model_type : str, optional
@@ -59,36 +58,44 @@ def encode(
     )
     generator.to(device)
     generator.eval()
-    kwargs = {"n_quantizers": n_quantizers}
+    if n_quantizers is not None:
+        warnings.warn(
+            "`n_quantizers` is ignored by FSQ models and kept only for backward compatibility.",
+            stacklevel=2,
+        )
 
     # Find all audio files in input path
-    input = Path(input)
-    audio_files = util.find_audio(input)
+    input_path = Path(input)
+    audio_files = util.find_audio(input_path)
 
-    output = Path(output)
-    output.mkdir(parents=True, exist_ok=True)
+    output_path = Path(output)
+    output_path.mkdir(parents=True, exist_ok=True)
 
     for i in tqdm(range(len(audio_files)), desc="Encoding files"):
         # Load file
         signal = AudioSignal(audio_files[i])
 
         # Encode audio to .dac format
-        artifact = generator.compress(signal, win_duration, verbose=verbose, **kwargs)
+        artifact = generator.compress(
+            signal,
+            win_duration,
+            verbose=verbose,
+            n_quantizers=n_quantizers,
+        )
 
         # Compute output path
-        relative_path = audio_files[i].relative_to(input)
-        output_dir = output / relative_path.parent
+        relative_path = audio_files[i].relative_to(input_path)
+        output_dir = output_path / relative_path.parent
         if not relative_path.name:
-            output_dir = output
+            output_dir = output_path
             relative_path = audio_files[i]
-        output_name = relative_path.with_suffix(".dac").name
-        output_path = output_dir / output_name
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path = output_dir / relative_path.with_suffix(".dac").name
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
 
-        artifact.save(output_path)
+        artifact.save(artifact_path)
 
 
 if __name__ == "__main__":
     args = argbind.parse_args()
     with argbind.scope(args):
-        encode()
+        encode()  # type: ignore[call-arg]

@@ -209,7 +209,7 @@ class CodecMixin:
 
             audio_data = x.audio_data.to(self.device)
             audio_data = self.preprocess(audio_data, self.sample_rate)
-            _, c, _, _, _ = self.encode(audio_data, n_quantizers)
+            _, c = self.encode(audio_data)
             codes.append(c.to(original_device))
             chunk_length = c.shape[-1]
 
@@ -225,9 +225,6 @@ class CodecMixin:
             padding=self.padding,
             dac_version=SUPPORTED_VERSIONS[-1],
         )
-
-        if n_quantizers is not None:
-            codes = codes[:, :n_quantizers, :]
 
         self.padding = original_padding
         return dac_file
@@ -267,7 +264,9 @@ class CodecMixin:
 
         for i in range_fn(0, codes.shape[-1], chunk_length):
             c = codes[..., i : i + chunk_length].to(self.device)
-            z = self.quantizer.from_codes(c)[0]
+            z = self.quantizer.from_codes(c)
+            if isinstance(z, tuple):
+                z = z[0]
             r = self.decode(z)
             recons.append(r.to(original_device))
 
