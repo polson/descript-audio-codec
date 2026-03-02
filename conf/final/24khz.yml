@@ -6,10 +6,7 @@ DAC.decoder_dim: 1536
 DAC.decoder_rates: [8, 5, 4, 2]
 
 # Quantization
-DAC.n_codebooks: 32
-DAC.codebook_size: 1024
-DAC.codebook_dim: 8
-DAC.quantizer_dropout: 0.5
+DAC.fsq_levels: [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8]
 
 # Discriminator
 Discriminator.sample_rate: 24000
@@ -42,8 +39,6 @@ lambdas:
   mel/loss: 15.0
   adv/feat_loss: 2.0
   adv/gen_loss: 1.0
-  vq/commitment_loss: 0.25
-  vq/codebook_loss: 1.0
 
 VolumeNorm.db: [const, -16]
 

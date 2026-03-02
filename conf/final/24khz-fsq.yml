@@ -1,0 +1,19 @@
+$include:
+  - conf/base.yml
+
+# Model setup
+DAC.sample_rate: 24000
+DAC.encoder_dim: 64
+DAC.encoder_rates: [2, 4, 5, 8]
+DAC.decoder_dim: 1536
+DAC.decoder_rates: [8, 5, 4, 2]
+
+# Approximate 8kbps target at 24kHz (75 fps): 36 dims x 3 bits = 108 bits/frame (~8.1 kbps)
+DAC.fsq_levels: [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8]
+
+Discriminator.sample_rate: 24000
+
+lambdas:
+  mel/loss: 15.0
+  adv/feat_loss: 2.0
+  adv/gen_loss: 1.0

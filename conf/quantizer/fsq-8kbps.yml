@@ -1,0 +1,2 @@
+# 44.1kHz model: 30 dims x 3 bits = 90 bits/frame (~7.75 kbps at 86.13 fps)
+DAC.fsq_levels: [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8]
