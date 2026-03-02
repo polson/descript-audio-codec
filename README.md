@@ -82,10 +82,10 @@ signal = AudioSignal('input.wav')
 signal.to(model.device)
 
 x = model.preprocess(signal.audio_data, signal.sample_rate)
-z, codes, latents, _, _ = model.encode(x)
+z_q, codes = model.encode(x)
 
 # Decode audio signal
-y = model.decode(z)
+y = model.decode(z_q)
 
 # Alternatively, use the `compress` and `decompress` functions
 # to compress long files.
@@ -103,6 +103,26 @@ y = model.decompress(x)
 # Write to file
 y.write('output.wav')
 ```
+
+### FSQ (Finite Scalar Quantization) variant
+
+This repository now includes an FSQ quantizer path as a lightweight alternative to RVQ.
+
+Key differences:
+- No learned codebook parameters.
+- Element-wise quantization in projected latent dimensions.
+- No auxiliary VQ losses (`vq/commitment_loss`, `vq/codebook_loss`).
+- Legacy `n_quantizers` args are still accepted but ignored for FSQ models.
+
+Bitrate notes:
+- `bits_per_frame = sum(log2(levels_i))` for power-of-two levels.
+- `frame_rate = sample_rate / hop_length`.
+- `bitrate_bps = bits_per_frame * frame_rate`.
+- For the 44.1kHz model (`hop_length = 512`), `DAC.fsq_levels: [8] * 30` gives 90 bits/frame and about 7.75 kbps, matching the original DAC 8kbps payload.
+
+Checkpoint compatibility:
+- FSQ and RVQ checkpoints are not drop-in compatible.
+- Keep RVQ configs/checkpoints around if you need legacy models.
 
 ### Docker image
 We provide a dockerfile to build a docker image with all the necessary
@@ -176,8 +196,8 @@ torchrun --nproc_per_node gpu scripts/train.py --args.load conf/ablations/baseli
 ```
 
 ## Testing
-We provide two test scripts to test CLI + training functionality. Please
-make sure that the trainig pre-requisites are satisfied before launching these
+We provide tests for CLI, training, and FSQ behavior. Please
+make sure that the training pre-requisites are satisfied before launching these
 tests. To launch these tests please run
 ```
 python -m pytest tests
